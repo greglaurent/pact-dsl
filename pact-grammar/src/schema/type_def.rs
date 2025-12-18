@@ -1,7 +1,7 @@
 use core::{fmt::Debug, hash::Hash};
 
 #[derive(Debug, Clone)]
-pub struct TypeAlias {
+pub struct TypeAliasDef {
     pub name: String,
     pub ty: TypeExpr,
     pub doc: Option<String>,
@@ -16,8 +16,6 @@ pub enum TypeExpr {
     Map(Box<TypeExpr>, Box<TypeExpr>),
     Set(Box<TypeExpr>),
 }
-
-pub trait Prim {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Unsigned {

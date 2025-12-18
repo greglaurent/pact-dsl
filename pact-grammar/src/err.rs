@@ -1,5 +1,5 @@
 use derive_more::From;
-use pest::error::Error as PestError;
+use pest::error::{Error as PestError, ErrorVariant};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -12,7 +12,7 @@ pub enum Error {
     },
 
     // TODO: Fix this -- Pest uses PestError<T>
-    PestError(),
+    ParseError(),
 }
 
 impl Error {

@@ -1,12 +1,12 @@
 use crate::schema::{
     flag_def::FlagsDef,
     trait_def::{ImplForDef, TraitDef},
-    type_def::TypeAlias,
 };
 
 pub use crate::schema::{
     enum_def::{EnumDef, EnumVariant},
     struct_def::{StructDef, StructKind},
+    type_def::{Primitive, TypeAliasDef, TypeExpr},
 };
 
 mod enum_def;
@@ -24,7 +24,7 @@ pub struct Schema {
 pub enum Item {
     Struct(StructDef),
     Enum(EnumDef),
-    TypeAlias(TypeAlias),
+    TypeAlias(TypeAliasDef),
     Flags(FlagsDef),
     Trait(TraitDef),
     ImplFor(ImplForDef),
