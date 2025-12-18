@@ -1,0 +1,13 @@
+[package]
+name = "pact-grammar"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pest = "2.8.4"
+pest_derive = "2.8.4"
+derive_more = { version = "2.1.0", features = ["display", "from"] }
+
+[build-dependencies]
+pest = "2.8.4"
+pest_meta = "2.8.4"

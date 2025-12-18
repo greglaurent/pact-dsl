@@ -1,0 +1,124 @@
+// Schema grammar - single source of truth
+
+// Whitespace and comments
+WHITESPACE   = _{ " " | "\t" | "\r" | "\n" }
+COMMENT      = _{ doc_comment | line_comment }
+line_comment =  { "//" ~ (!NEWLINE ~ ANY)* }
+doc_comment  =  { "///" ~ (!NEWLINE ~ ANY)* }
+NEWLINE      = _{ "\n" | "\r\n" }
+
+// Identifiers and keywords
+identifier = @{ !active_keyword ~ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
+
+// Keywords that are currently active and cannot be used as identifiers
+// Must be followed by non-alphanumeric to distinguish from identifiers (e.g., "settings" vs "set")
+active_keyword = @{
+    ("struct" | "enum" | "type" | "map" | "set" | "option" | "trait" | "impl" | "for" | "flags" | "bool" | "String" | "u8" | "u16" | "u32" | "u64" | "i8" | "i16" | "i32" | "i64" | "f32" | "f64") ~ !(ASCII_ALPHANUMERIC | "_")
+}
+
+// Reserved for future - will be blocked when implemented
+// "protocol" | "message" | "boundary" | "route" | "runtime" | "fn"
+
+// Primitives
+primitive = {
+    "bool"
+  | "String"
+  | "u8"
+  | "u16"
+  | "u32"
+  | "u64"
+  | "i8"
+  | "i16"
+  | "i32"
+  | "i64"
+  | "f32"
+  | "f64"
+}
+
+// Literals
+bool_lit       =  { "true" | "false" }
+number_lit     = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+string_lit     =  { "\"" ~ string_content ~ "\"" }
+string_content = @{ (!"\"" ~ ANY)* }
+literal        =  { bool_lit | number_lit | string_lit }
+
+// Type expressions
+type_expr = {
+    array_fixed_type
+  | array_type
+  | map_type
+  | set_type
+  | primitive
+  | identifier
+}
+
+array_type       = { "[" ~ type_expr ~ "]" }
+array_fixed_type = { "[" ~ type_expr ~ ";" ~ number_lit ~ "]" }
+map_type         = { "map"? ~ "{" ~ type_expr ~ ":" ~ type_expr ~ "}" }
+set_type         = { "set" ~ "{" ~ type_expr ~ "}" }
+
+// Default values
+default_value  = {
+    option_default
+  | literal
+}
+option_default = { "option" ~ ("(" ~ literal ~ ")")? }
+
+// Fields (for named structs/variants)
+field      = { identifier ~ ":" ~ type_expr ~ ("=" ~ default_value)? }
+field_list = { field ~ ("," ~ field)* ~ ","? }
+
+// Tuple elements (for tuple structs/variants)
+tuple_elem = { type_expr }
+tuple_list = { tuple_elem ~ ("," ~ tuple_elem)* ~ ","? }
+
+// Struct definition
+struct_def = {
+    "struct" ~ identifier ~ (";" | // unit: struct Foo;
+  "{" ~ "}" | // unit: struct Foo {}
+  "{" ~ tuple_list ~ "}" | // tuple: struct Foo { u16, bool }
+  "{" ~ field_list ~ "}" // named: struct Foo { name: String }
+  )
+}
+
+enum_variant = {
+    identifier ~ ("{" ~ "}" | // unit: Variant {}
+  "{" ~ tuple_list ~ "}" | // tuple: Variant { u16 }
+  "{" ~ field_list ~ "}" // struct: Variant { name: String }
+  )?
+}
+
+// or just: Variant (unit)
+enum_variant_list = { enum_variant ~ ("," ~ enum_variant)* ~ (",")? }
+
+// Enum definition
+enum_def = { "enum" ~ identifier ~ "{" ~ enum_variant_list? ~ "}" }
+
+// Type alias
+type_alias = { "type" ~ identifier ~ ":" ~ type_expr }
+
+// Flags (generates bitflags!)
+flags_def          = { "flags" ~ identifier ~ (":" ~ flags_repr)? ~ "{" ~ flags_variant_list ~ "}" }
+flags_repr         = { "u8" | "u16" | "u32" | "u64" | "usize" }
+flags_variant_list = { identifier ~ ("," ~ identifier)* ~ ","? }
+
+// Trait anchor (for scoped feature flags)
+// trait arch { Avr: width(16), X86_64: width(64) }
+trait_def          = { "trait" ~ identifier ~ "{" ~ trait_variant_list ~ "}" }
+trait_variant      = { identifier ~ ":" ~ trait_prop_list }
+trait_variant_list = { trait_variant ~ ("," ~ trait_variant)* ~ ","? }
+trait_prop_list    = { trait_prop ~ ("," ~ trait_prop)* }
+trait_prop         = { identifier ~ "(" ~ literal ~ ")" }
+
+// Impl scoped flags for trait
+// impl simd for arch { X86_64 { Avx, Avx2 }, Aarch64 { Neon } }
+impl_for_def    = { "impl" ~ identifier ~ "for" ~ identifier ~ "{" ~ impl_block_list ~ "}" }
+impl_block      = { identifier ~ "{" ~ identifier_list? ~ "}" }
+impl_block_list = { impl_block ~ ("," ~ impl_block)* ~ ","? }
+identifier_list = { identifier ~ ("," ~ identifier)* ~ ","? }
+
+// Top-level items
+item = { struct_def | enum_def | type_alias | flags_def | trait_def | impl_for_def }
+
+// Schema file (entry point)
+schema = { SOI ~ item* ~ EOI }
