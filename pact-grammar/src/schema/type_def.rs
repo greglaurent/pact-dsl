@@ -1,10 +1,19 @@
 use core::{fmt::Debug, hash::Hash};
 
+use crate::schema::{Block, BlockSpan};
+
 #[derive(Debug, Clone)]
 pub struct TypeAliasDef {
     pub name: String,
     pub ty: TypeExpr,
     pub doc: Option<String>,
+    pub block: BlockSpan,
+}
+
+impl Block for TypeAliasDef {
+    fn block(&self) -> &BlockSpan {
+        &self.block
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -1,23 +1,34 @@
-use crate::schema::{
-    flag_def::FlagsDef,
-    trait_def::{ImplForDef, TraitDef},
-};
+use pest::Span;
 
 pub use crate::schema::{
     enum_def::{EnumDef, EnumVariant},
-    struct_def::{StructDef, StructKind},
-    type_def::{Primitive, TypeAliasDef, TypeExpr},
+    struct_def::{Field, FlagsDef, StructDef, StructKind},
+    trait_def::{ImplBlock, ImplForDef, TraitDef, TraitProp, TraitVariant},
+    type_def::{Primitive, Signed, TypeAliasDef, TypeExpr, Unsigned},
 };
 
 mod enum_def;
-mod flag_def;
 mod struct_def;
 mod trait_def;
 mod type_def;
 
+pub trait Block {
+    fn block(&self) -> &BlockSpan;
+}
+
+#[derive(Debug, Clone)]
+pub struct BlockSpan {
+    pub name: Span<'static>,
+    pub full: Span<'static>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Schema {
     pub items: Vec<Item>,
+}
+
+impl Schema {
+    pub fn map_types() {}
 }
 
 #[derive(Debug, Clone)]

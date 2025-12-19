@@ -1,13 +1,15 @@
 use pest::Parser;
 use pest_derive::Parser;
 
+mod enum_parse;
+mod struct_parse;
+mod trait_parse;
 mod type_parse;
 
-use crate::schema::{EnumDef, EnumVariant, Item, Schema, StructDef, StructKind, TypeAliasDef};
-
-pub trait PestParser<T> {
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<T, String>;
-}
+use crate::schema::{
+    DefaultValue, EnumDef, FlagsDef, ImplForDef, Item, Literal, Primitive, Schema, Signed,
+    StructDef, TraitDef, TypeAliasDef, Unsigned,
+};
 
 #[derive(Parser)]
 #[grammar = "./src/spec.pest"]
@@ -15,112 +17,90 @@ pub struct SchemaParser;
 
 pub fn parse(input: &str) -> Result<Schema, String> {
     let pairs = SchemaParser::parse(Rule::schema, input).map_err(|e| e.to_string())?;
-
     let items = pairs
         .flatten()
         .filter(|p| p.as_rule() == Rule::item)
-        .filter_map(|p| Item::parse_pair(p).transpose())
+        .map(Item::parse_pair)
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Schema { items })
 }
 
-impl PestParser<Item> {
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
+fn parse_primitive(s: &str) -> Result<Primitive, String> {
+    match s {
+        "bool" => Ok(Primitive::Bool),
+        "u8" => Ok(Primitive::Unsigned(Unsigned::U8)),
+        "u16" => Ok(Primitive::Unsigned(Unsigned::U16)),
+        "u32" => Ok(Primitive::Unsigned(Unsigned::U32)),
+        "u64" => Ok(Primitive::Unsigned(Unsigned::U64)),
+        "i8" => Ok(Primitive::Signed(Signed::I8)),
+        "i16" => Ok(Primitive::Signed(Signed::I16)),
+        "i32" => Ok(Primitive::Signed(Signed::I32)),
+        "i64" => Ok(Primitive::Signed(Signed::I64)),
+        "f32" => Ok(Primitive::F32),
+        "f64" => Ok(Primitive::F64),
+        "String" => Ok(Primitive::String),
+        _ => Err(format!("Unknown primitive: {}", s)),
+    }
+}
+
+trait PestParser: Sized {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String>;
+}
+
+impl PestParser for Item {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String> {
         let inner = pair.into_inner().next().ok_or("empty item")?;
 
         match inner.as_rule() {
-            Rule::struct_def => Ok(Some(Item::Struct(StructDef::parse_pair(inner)?))),
-            Rule::enum_def => Ok(Some(Item::Enum(parse_enum_def(inner)?))),
-            Rule::type_alias => Ok(Some(Item::TypeAlias(parse_type_alias(inner)?))),
-            Rule::flags_def => Ok(Some(Item::Flags(parse_flags_def(inner)?))),
-            Rule::trait_def => Ok(Some(Item::Trait(parse_trait_def(inner)?))),
-            Rule::impl_for_def => Ok(Some(Item::ImplFor(parse_impl_for_def(inner)?))),
-            _ => Ok(None),
+            Rule::struct_def => Ok(Item::Struct(StructDef::parse_pair(inner)?)),
+            Rule::enum_def => Ok(Item::Enum(EnumDef::parse_pair(inner)?)),
+            Rule::type_alias => Ok(Item::TypeAlias(TypeAliasDef::parse_pair(inner)?)),
+            Rule::flags_def => Ok(Item::Flags(FlagsDef::parse_pair(inner)?)),
+            Rule::trait_def => Ok(Item::Trait(TraitDef::parse_pair(inner)?)),
+            Rule::impl_for_def => Ok(Item::ImplFor(ImplForDef::parse_pair(inner)?)),
+            _ => panic!("Fix this"),
         }
     }
 }
 
-impl PestParser for StructDef {
-    type S = Self;
+impl PestParser for DefaultValue {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<DefaultValue, String> {
+        let inner = pair.into_inner().next().ok_or("empty default value")?;
 
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
-        let mut inner = pair.into_inner();
-        let name = inner
-            .next()
-            .ok_or("Struct definition missing a name.")?
-            .as_str()
-            .to_string();
-
-        let kind = if let Some(body) = inner.next() {
-            match body.as_rule() {
-                Rule::field_list => StructKind::Named(parse_field_list(body)?),
-                Rule::tuple_list => StructKind::Tuple(parse_tuple_list(body)?),
-                _ => StructKind::Unit,
+        match inner.as_rule() {
+            Rule::option_default => {
+                let lit = inner
+                    .into_inner()
+                    .next()
+                    .map(|p| Literal::parse_pair(p))
+                    .transpose()?;
+                Ok(DefaultValue::Option(lit))
             }
-        } else {
-            StructKind::Unit
-        };
-
-        Ok(StructDef {
-            name,
-            kind,
-            doc: None,
-        })
-    }
-}
-
-impl PestParser for EnumDef {
-    type S = Self;
-
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
-        let mut inner = pair.into_inner();
-        let name = inner
-            .next()
-            .ok_or("enum missing name")?
-            .as_str()
-            .to_string();
-
-        let mut variants = Vec::new();
-        for p in inner {
-            if p.as_rule() == Rule::enum_variant_list {
-                for v in p.into_inner() {
-                    if v.as_rule() == Rule::enum_variant {
-                        variants.push(parse_enum_variant(v)?);
-                    }
-                }
-            }
+            Rule::literal => Ok(DefaultValue::Literal(Literal::parse_pair(inner)?)),
+            _ => Err(format!(
+                "unexpected default value rule: {:?}",
+                inner.as_rule()
+            )),
         }
-
-        Ok(EnumDef {
-            name,
-            variants,
-            doc: None,
-        })
     }
 }
 
-impl PestParser for EnumVariant {
-    type S = Self;
+impl PestParser for Literal {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String> {
+        let inner = pair.into_inner().next().ok_or("empty literal")?;
 
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
-        let mut inner = pair.into_inner();
-        let name = inner
-            .next()
-            .ok_or("Enum variant missing name.")?
-            .as_str()
-            .to_string();
-
-        let kind = if let Some(body) = inner.next() {
-            match body.as_rule() {
-                Rule::field_list => StructKind::Named(parse_field_list(body)?),
-                Rule::tuple_list => StructKind::Tuple(parse_tuple_list(body)?),
-                _ => StructKind::Unit,
+        match inner.as_rule() {
+            Rule::bool_lit => Ok(Literal::Bool(inner.as_str() == "true")),
+            Rule::number_lit => {
+                let n: f64 = inner.as_str().parse().map_err(|_| "invalid number")?;
+                Ok(Literal::Number(n))
             }
-        } else {
-            StructKind::Unit
-        };
-
-        Ok(EnumVariant { name, kind })
+            Rule::string_lit => {
+                let content = inner.into_inner().next().ok_or("empty string")?;
+                Ok(Literal::String(content.as_str().to_string()))
+            }
+            _ => Err(format!("unexpected literal rule: {:?}", inner.as_rule())),
+        }
     }
 }

@@ -1,21 +1,24 @@
 use crate::{
-    parser::{PestParser, Rule},
-    schema::{Primitive, TypeAliasDef, TypeExpr},
+    parser::{PestParser, Rule, parse_primitive},
+    schema::{Span, TypeAliasDef, TypeExpr},
 };
 
 impl PestParser for TypeAliasDef {
-    type S = Self;
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String> {
+        let span = pair.as_span();
+        let span_range = span.start()..span.end();
+
         let mut inner = pair.into_inner();
-        let name = inner
-            .next()
-            .ok_or("Type alias missing name.")?
-            .as_str()
-            .to_string();
+
+        let name_pair = inner.next().ok_or("Type alias missing name.")?;
+        let name_span = name_pair.as_span();
+        let name = name_pair.as_str().to_string();
+
         let ty = TypeExpr::parse_pair(inner.next().ok_or("Type alias missing type")?)?;
 
         Ok(TypeAliasDef {
             name,
+            span,
             ty,
             doc: None,
         })
@@ -23,9 +26,7 @@ impl PestParser for TypeAliasDef {
 }
 
 impl PestParser for TypeExpr {
-    type S = Self;
-
-    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self::S, String> {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String> {
         let inner = pair.into_inner().next().ok_or("empty type expr")?;
 
         match inner.as_rule() {
@@ -62,29 +63,22 @@ impl PestParser for TypeExpr {
                     .into_inner()
                     .next()
                     .ok_or("set missing element type")?;
-                Ok(TypeExpr::Set(Box::new(parse_type_expr(elem)?)))
+                Ok(TypeExpr::Set(Box::new(TypeExpr::parse_pair(elem)?)))
             }
             _ => Err(format!("unexpected type expr rule: {:?}", inner.as_rule())),
         }
     }
 }
 
-impl PestParser for Primitive {
-    fn parse_primitive(s: &str) -> Result<Primitive, String> {
-        match s {
-            "bool" => Ok(Primitive::Bool),
-            "u8" => Ok(Primitive::U8),
-            "u16" => Ok(Primitive::U16),
-            "u32" => Ok(Primitive::U32),
-            "u64" => Ok(Primitive::U64),
-            "i8" => Ok(Primitive::I8),
-            "i16" => Ok(Primitive::I16),
-            "i32" => Ok(Primitive::I32),
-            "i64" => Ok(Primitive::I64),
-            "f32" => Ok(Primitive::F32),
-            "f64" => Ok(Primitive::F64),
-            "String" => Ok(Primitive::String),
-            _ => Err(format!("unknown primitive: {}", s)),
+impl PestParser for Vec<TypeExpr> {
+    fn parse_pair(pair: pest::iterators::Pair<Rule>) -> Result<Self, String> {
+        let mut types = Vec::new();
+        for p in pair.into_inner() {
+            if p.as_rule() == Rule::tuple_elem {
+                let inner = p.into_inner().next().ok_or("empty tuple elem")?;
+                types.push(TypeExpr::parse_pair(inner)?);
+            }
         }
+        Ok(types)
     }
 }
